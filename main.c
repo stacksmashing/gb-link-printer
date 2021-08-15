@@ -33,9 +33,10 @@
 #include <stdio.h>
 #include <string.h>
 // #include "tusb.h"
-#include "hardware/pio.h"
-#include "pio/pio_spi.h"
-const uint SI_PIN = 3;
+//#include "hardware/pio.h"
+//#include "pio/pio_spi.h"
+#include "hardware/gpio.h"
+//const uint SI_PIN = 3;
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
@@ -75,10 +76,10 @@ void webserial_task(void);
 
 /*------------- MAIN -------------*/
 
-  pio_spi_inst_t spi = {
-          .pio = pio1,
-          .sm = 0
-  };
+//  pio_spi_inst_t spi = {
+//          .pio = pio1,
+//          .sm = 0
+//  };
 
 
 #define PIN_SCK 0
@@ -101,22 +102,23 @@ enum printer_state {
   GB_STATUS
 };
 
-void send_byte(uint8_t b) {
-  gpio_put(PIN_SCK, 1);
-  gpio_set_dir(PIN_SCK, GPIO_OUT);
-  
-  for(int i=0; i < 8; i++) {
-    gpio_put(PIN_SOUT, b & 0x1);
-    gpio_put(PIN_SCK, 0);
-    sleep_us(64);
-    gpio_put(PIN_SCK, 1);
-    sleep_us(64);
-    b = b >> 1;
-  }
-  gpio_set_dir(PIN_SCK, GPIO_IN);
-}
+//void send_byte(uint8_t b) {
+//  gpio_put(PIN_SCK, 1);
+//  gpio_set_dir(PIN_SCK, GPIO_OUT);
+//  
+//  for(int i=0; i < 8; i++) {
+//    gpio_put(PIN_SOUT, b & 0x1);
+//    gpio_put(PIN_SCK, 0);
+//    sleep_us(64);
+//    gpio_put(PIN_SCK, 1);
+//    sleep_us(64);
+//    b = b >> 1;
+//  }
+//  gpio_set_dir(PIN_SCK, GPIO_IN);
+//}
 
 char data[30*1024];
+char params[4];
 
 int main(void)
 {
@@ -151,6 +153,8 @@ int main(void)
   uint16_t received_bytes_counter = 0;
   while(1) {
 
+    gpio_put(25, synced);
+
     // wait for clk to go low
     while(gpio_get(PIN_SCK)) {};
     gpio_put(PIN_SOUT, send_data & 0x1);
@@ -160,7 +164,6 @@ int main(void)
 
     received_data = (received_data << 1) | (gpio_get(PIN_SIN) & 0x1);
 
-    gpio_put(25, synced);
     if(synced == false) {
       if(received_data != 0x88) {
         continue;
@@ -202,14 +205,6 @@ int main(void)
         state = GB_COMPRESSION_INDICATOR;
         if(command == 1) {
           received_bytes = 0;
-        } else if(command == 2) {
-          printf("PRINT ");
-          for(int i=0; i < received_bytes; i++) {
-            printf("%02X ", data[i]);
-          }
-          printf("\nFIN\n");
-          state = GB_WAIT_FOR_SYNC_1;
-          synced = false;
         }
         break;
       case GB_COMPRESSION_INDICATOR:
@@ -233,9 +228,13 @@ int main(void)
         break;
       case GB_DATA:
         // printf("LEN %d\n", length);
+        if (command == 2) {
+          params[received_bytes_counter] = received_data;
+        } else {
+          data[received_bytes] = received_data;
+          received_bytes++;
+        }
         received_bytes_counter++;
-        data[received_bytes] = received_data;
-        received_bytes++;
         if(length == received_bytes_counter) {
           state = GB_CHECKSUM_1;
         }
@@ -257,18 +256,33 @@ int main(void)
       case GB_DEVICE_ID:
         // send_byte(0x81);
         // send_byte(0x0);
-        send_data = 0x0;
+        send_data = (command == 1) ? 0x0 : 0x10;  // Bits must be reversed because data is expected most-significant-bit first (0x10 outputs as 0x08)
         state = GB_STATUS;
         // synced = false;
         break;
       case GB_STATUS:
         state = GB_WAIT_FOR_SYNC_1;
         synced = false;
+        send_data = 0x0;
         
         printf("DONE %d\n", command);
         printf("Command: %d\n", command);
         printf("Compression: %d\n", compression_indicator);
         printf("Length: %d\n", length);
+
+        if(command == 2) {
+          printf("PARAMS ");
+          for(int i=0; i < length; i++) {
+            printf("%02X ", params[i]);
+          }
+          printf("\nFIN\n");
+          printf("PRINT ");
+          for(int i=0; i < received_bytes; i++) {
+            printf("%02X ", data[i]);
+          }
+          printf("\nFIN\n");
+        }
+
         break;
       default:
         printf("INVALID STATE HELP\n");
