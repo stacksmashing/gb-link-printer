@@ -201,3 +201,26 @@ body {
 .score {
   font-size: 200px;
 }
+
+
+.palette-preview {
+  display: flex;
+  width: 480px;
+  margin: auto;
+}
+.palette-preview .palette-color {
+  width: 120px;
+  height: 120px;
+  font-size: 10pt;
+}
+.palette-selector {
+  border: 1px solid white;
+  border-radius: 5px;
+  margin: auto;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  width: 480px;
+}
+.palette-credits {
+  font-style: italic;
+}
